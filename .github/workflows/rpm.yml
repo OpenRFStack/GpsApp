@@ -1,0 +1,80 @@
+name: RPM Package
+
+on:
+  push:
+    branches: ["main/1.0"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rpm:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    container:
+      image: rockylinux:9
+
+    steps:
+      - name: Install build tools
+        run: |
+          dnf install -y epel-release dnf-plugins-core
+          dnf config-manager --set-enabled crb
+          dnf makecache
+          dnf install -y cmake ninja-build gcc-c++ git pkg-config ruby ruby-devel rpm-build
+          gem install --no-document fpm
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh --repo gh-cli
+
+      - name: Install app dependencies
+        run: dnf install -y qpid-proton-cpp-devel tinyxml2-devel spdlog-devel fmt-devel
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_TESTING=OFF
+          cmake --build build --parallel
+          DESTDIR=$PWD/install cmake --install build
+
+      - name: Package RPM with fpm
+        run: |
+          VERSION=$(grep -oP 'project\(GpsApp.*VERSION\s+\K\d+\.\d+\.\d+' CMakeLists.txt | head -1 || echo "1.0.0")
+          BIN=$(find install -name "sdr_gps" -type f | head -1)
+          [ -z "$BIN" ] && BIN=$(find build -name "sdr_gps" -type f | head -1)
+          if [ -z "$BIN" ]; then
+            echo "ERROR: sdr_gps not found after build"
+            exit 1
+          fi
+          mkdir -p rpm_out
+          fpm -s dir -t rpm \
+            -n sdr-gps \
+            -v "${VERSION}" \
+            --iteration 1 \
+            --rpm-os linux \
+            --description "OpenRFStack GPS location logger" \
+            --url "https://github.com/OpenRFStack/GpsApp" \
+            --license "Proprietary" \
+            --package rpm_out/ \
+            "${BIN}=/usr/bin/sdr_gps"
+          ls -lh rpm_out/
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=latest-main
+          gh release view "$TAG" --repo ${{ github.repository }} 2>/dev/null || \
+            gh release create "$TAG" \
+              --repo ${{ github.repository }} \
+              --title "Latest build" \
+              --notes "Rolling pre-release from main/1.0" \
+              --prerelease
+          gh release upload "$TAG" rpm_out/*.rpm \
+            --repo ${{ github.repository }} \
+            --clobber

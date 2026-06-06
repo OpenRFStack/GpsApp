@@ -58,6 +58,12 @@ target_include_directories(sdr_gps PRIVATE
     ${FMT_INCLUDE_DIRS}
 )
 
+# Pass any extra compile flags from pkg-config (e.g. SPDLOG_FMT_EXTERNAL on Rocky 9)
+target_compile_options(sdr_gps PRIVATE
+    ${SPDLOG_CFLAGS_OTHER}
+    ${FMT_CFLAGS_OTHER}
+)
+
 target_link_libraries(sdr_gps PRIVATE
     Threads::Threads
     ${PROTON_LIBRARIES}

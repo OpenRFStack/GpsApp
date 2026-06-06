@@ -13,7 +13,21 @@ endif()
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(PROTON REQUIRED libqpid-proton-cpp)
+# qpid-proton: try pkg-config first, fall back to direct find_library
+pkg_check_modules(PROTON QUIET libqpid-proton-cpp)
+if(NOT PROTON_FOUND)
+    find_library(PROTON_CPP_LIB NAMES qpid-proton-cpp)
+    find_path(PROTON_INCLUDE_DIR NAMES proton/connection.hpp)
+    if(NOT PROTON_CPP_LIB OR NOT PROTON_INCLUDE_DIR)
+        message(FATAL_ERROR "qpid-proton-cpp not found.\n"
+            "  Ubuntu: sudo apt-get install libqpid-proton-cpp12-dev\n"
+            "  Rocky:  sudo dnf install qpid-proton-cpp-devel")
+    endif()
+    set(PROTON_LIBRARIES ${PROTON_CPP_LIB})
+    set(PROTON_INCLUDE_DIRS ${PROTON_INCLUDE_DIR})
+    message(STATUS "qpid-proton-cpp found via find_library: ${PROTON_CPP_LIB}")
+endif()
+
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 pkg_check_modules(SPDLOG REQUIRED spdlog)
 pkg_check_modules(FMT REQUIRED fmt)

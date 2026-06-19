@@ -31,6 +31,13 @@ void AmqpPublisher::stop() {
     if (container_) {
         if (work_queue_)
             work_queue_->add([this] { sender_.connection().close(); });
+        else
+            // Connection never reached on_sender_open, so there's no work
+            // queue to post a close through — stop the reactor directly so
+            // thread_.join() below can't block forever (matters if/when
+            // reconnect_options with infinite retries is ever added here,
+            // as happened in AcquisitionApp's AmqpPublisher/TaskAmqpChannel).
+            container_->stop();
         if (thread_.joinable()) thread_.join();
         delete container_;
         container_ = nullptr;

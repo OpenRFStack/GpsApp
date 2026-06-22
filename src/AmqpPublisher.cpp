@@ -82,6 +82,19 @@ void AmqpPublisher::on_container_start(proton::container& c) {
     } else {
         opts.sasl_allowed_mechs("ANONYMOUS");
     }
+    // Without this, a failed initial connection (e.g. broker not up yet —
+    // the common case here, since sdr-gps starts before Artemis's rollout
+    // wait completes) is permanent: proton tears the container down and
+    // work_queue_ never gets set, so publish() silently no-ops forever.
+    // Confirmed live on the Pi: one "Connection refused" at startup, then
+    // zero AMQP activity for 8+ hours despite Artemis coming up seconds
+    // later. Matches AcquisitionApp::AmqpPublisher / TaskAmqpChannel,
+    // which already carry this same fix — ported here.
+    proton::reconnect_options ropts;
+    ropts.delay(proton::duration(2000));
+    ropts.max_delay(proton::duration(30000));
+    ropts.max_attempts(0);
+    opts.reconnect(ropts);
     c.connect(cfg_.broker_url, opts);
 }
 

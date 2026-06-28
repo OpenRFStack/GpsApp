@@ -30,7 +30,7 @@ public:
 private:
     bool connect();
     void disconnect();
-    bool readline(std::string& out);
+    bool readline(std::string& out, bool* timed_out = nullptr);
 
     const Config& cfg_;
     int           fd_ = -1;

@@ -17,6 +17,7 @@ Contact author for permission: https://github.com/OpenRFStack
 #include <netdb.h>
 #include <unistd.h>
 #include <cstring>
+#include <cerrno>
 #include <thread>
 #include <chrono>
 
@@ -39,6 +40,11 @@ bool GpsdClient::connect() {
 
     fd_ = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (fd_ < 0) { freeaddrinfo(res); return false; }
+
+    // 1-second receive timeout so readline() can periodically check `running`
+    // even when gpsd stops sending (GPS removed, connection stalls).
+    timeval tv{1, 0};
+    ::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     if (::connect(fd_, res->ai_addr, res->ai_addrlen) < 0) {
         freeaddrinfo(res);
@@ -63,14 +69,27 @@ void GpsdClient::disconnect() {
     if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
 }
 
-bool GpsdClient::readline(std::string& out) {
+// Returns true on a complete line, false on error or timeout.
+// Sets *timed_out=true when SO_RCVTIMEO or EINTR fired (no reconnect needed);
+// *timed_out=false on a real read error or EOF (connection lost, reconnect).
+bool GpsdClient::readline(std::string& out, bool* timed_out) {
+    if (timed_out) *timed_out = false;
     out.clear();
     char c;
     while (true) {
         ssize_t n = ::read(fd_, &c, 1);
-        if (n <= 0) return false;
-        if (c == '\n') return true;
-        out += c;
+        if (n > 0) {
+            if (c == '\n') return true;
+            out += c;
+        } else if (n == 0) {
+            return false; // EOF — connection closed
+        } else {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                if (timed_out) *timed_out = true;
+                return false; // SO_RCVTIMEO or signal — caller re-checks running
+            }
+            return false; // real read error
+        }
     }
 }
 
@@ -113,7 +132,10 @@ void GpsdClient::run(const std::atomic<bool>& running, FixCallback cb) {
         }
 
         std::string line;
-        if (!readline(line)) {
+        bool timed_out = false;
+        if (!readline(line, &timed_out)) {
+            if (!running) break; // shutdown requested during SO_RCVTIMEO wait
+            if (timed_out) continue; // just a 1s poll tick — no reconnect needed
             spdlog::warn("[GpsdClient] connection lost — reconnecting");
             disconnect();
             continue;

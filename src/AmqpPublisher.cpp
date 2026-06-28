@@ -68,8 +68,7 @@ void AmqpPublisher::publish(const GpsFix& fix, const std::string& device_id) {
     msg.content_type("application/json");
 
     work_queue_->add([this, msg]() mutable {
-        if (sender_ && sender_.credit() > 0)
-            sender_.send(msg);
+        if (sender_) sender_.send(msg);
     });
 }
 

@@ -29,8 +29,8 @@ void AmqpPublisher::start() {
 void AmqpPublisher::stop() {
     stopping_ = true;
     if (container_) {
-        if (work_queue_)
-            work_queue_->add([this] { sender_.connection().close(); });
+        if (auto* wq = work_queue_.load())
+            wq->add([this] { sender_.connection().close(); });
         else
             // Connection never reached on_sender_open, so there's no work
             // queue to post a close through — stop the reactor directly so
@@ -45,7 +45,8 @@ void AmqpPublisher::stop() {
 }
 
 void AmqpPublisher::publish(const GpsFix& fix, const std::string& device_id) {
-    if (!work_queue_ || stopping_) return;
+    auto* wq = work_queue_.load();
+    if (!wq || stopping_) return;
 
     json j;
     j["schema"]        = "GPS_FIX";
@@ -67,7 +68,7 @@ void AmqpPublisher::publish(const GpsFix& fix, const std::string& device_id) {
     msg.body(j.dump());
     msg.content_type("application/json");
 
-    work_queue_->add([this, msg]() mutable {
+    wq->add([this, msg]() mutable {
         if (sender_) sender_.send(msg);
     });
 }
@@ -103,7 +104,7 @@ void AmqpPublisher::on_connection_open(proton::connection& conn) {
 
 void AmqpPublisher::on_sender_open(proton::sender& s) {
     sender_     = s;
-    work_queue_ = &s.work_queue();
+    work_queue_.store(&s.work_queue());
     spdlog::info("[AmqpPublisher] connected → {}", cfg_.topic);
 }
 

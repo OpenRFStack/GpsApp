@@ -45,7 +45,7 @@ private:
     const Config&         cfg_;
     proton::container*    container_  = nullptr;
     proton::sender        sender_;
-    proton::work_queue*   work_queue_ = nullptr;
+    std::atomic<proton::work_queue*> work_queue_{nullptr};
     std::thread           thread_;
     std::atomic<bool>     stopping_{false};
 };

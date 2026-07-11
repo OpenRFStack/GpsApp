@@ -126,7 +126,8 @@ void GpsdClient::run(const std::atomic<bool>& running, FixCallback cb) {
             spdlog::info("[GpsdClient] connecting to gpsd …");
             if (!connect()) {
                 spdlog::warn("[GpsdClient] connection failed — retry in 5s");
-                std::this_thread::sleep_for(std::chrono::seconds(5));
+                for (int i = 0; i < 50 && running; ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
         }

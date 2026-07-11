@@ -39,6 +39,7 @@ void AmqpPublisher::stop() {
             // as happened in AcquisitionApp's AmqpPublisher/TaskAmqpChannel).
             container_->stop();
         if (thread_.joinable()) thread_.join();
+        work_queue_.store(nullptr); // prevent dangling ptr after container delete
         delete container_;
         container_ = nullptr;
     }

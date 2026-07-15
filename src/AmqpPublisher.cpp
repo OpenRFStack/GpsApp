@@ -31,13 +31,12 @@ void AmqpPublisher::stop() {
     if (container_) {
         if (auto* wq = work_queue_.load())
             wq->add([this] { sender_.connection().close(); });
-        else
-            // Connection never reached on_sender_open, so there's no work
-            // queue to post a close through — stop the reactor directly so
-            // thread_.join() below can't block forever (matters if/when
-            // reconnect_options with infinite retries is ever added here,
-            // as happened in AcquisitionApp's AmqpPublisher/TaskAmqpChannel).
-            container_->stop();
+        // Always stop the container: if we posted close() above, the container
+        // exits cleanly after the connection closes. If work_queue_ is null or
+        // stale (e.g. proton is in a reconnect loop — wq points to a dropped
+        // connection's queue and close() is silently ignored), stop() breaks the
+        // run loop that would otherwise hang thread_.join() forever.
+        container_->stop();
         if (thread_.joinable()) thread_.join();
         work_queue_.store(nullptr); // prevent dangling ptr after container delete
         delete container_;

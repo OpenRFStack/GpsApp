@@ -19,8 +19,9 @@ Contact author for permission: https://github.com/OpenRFStack
 using json = nlohmann::json;
 
 GpsLogger::GpsLogger(const Config& cfg) {
-    std::filesystem::create_directories(
-        std::filesystem::path(cfg.fix_log_path).parent_path());
+    auto parent = std::filesystem::path(cfg.fix_log_path).parent_path();
+    if (!parent.empty())
+        std::filesystem::create_directories(parent);
     file_.open(cfg.fix_log_path, std::ios::app);
     if (!file_)
         spdlog::warn("[GpsLogger] cannot open log file: {}", cfg.fix_log_path);
@@ -44,5 +45,5 @@ void GpsLogger::log(const GpsFix& fix) {
     if (!fix.device.empty())          j["device"]      = fix.device;
 
     std::lock_guard<std::mutex> lk(mu_);
-    if (file_) file_ << j.dump() << '\n';
+    if (file_) { file_ << j.dump() << '\n'; file_.flush(); }
 }

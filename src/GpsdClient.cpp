@@ -154,6 +154,7 @@ void GpsdClient::run(const std::atomic<bool>& running, FixCallback cb) {
                 GpsFix fix = parse_tpv(j);
                 fix.satellites = last_sky_info.satellites;
                 if (std::isnan(fix.hdop)) fix.hdop = last_sky_info.hdop;
+                if (std::isnan(fix.vdop)) fix.vdop = last_sky_info.vdop;
                 if (fix.valid() && fix.mode >= cfg_.min_fix_mode) {
                     cb(fix);
                 }
